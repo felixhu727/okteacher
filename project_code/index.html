@@ -3,98 +3,560 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI客服系统</title>
+    <title>3D模型生成器</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-        .chat-container { max-width: 800px; margin: 0 auto; border: 1px solid #ccc; border-radius: 8px; }
-        .chat-header { background: #f0f0f0; padding: 15px; border-radius: 8px 8px 0 0; }
-        .chat-messages { height: 400px; overflow-y: auto; padding: 15px; }
-        .message { margin-bottom: 15px; padding: 10px; border-radius: 5px; }
-        .user-message { background: #e3f2fd; text-align: right; }
-        .ai-message { background: #f5f5f5; }
-        .chat-input { display: flex; padding: 15px; border-top: 1px solid #ccc; }
-        #user-input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
-        #send-button { margin-left: 10px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-weight: 2000;
+            font-size:15px;
+        }
+        ul{
+            color:black;
+        }
+
+        body {
+            /* background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); */
+            color: #fff;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .container {
+            display: flex;
+            min-height: 100vh;
+            padding: 20px;
+            gap: 20px;
+        }
+
+        /* 左侧模型列表样式 */
+        .models-sidebar {
+            width: 300px;
+            /* background: rgba(25, 25, 40, 0.8); */
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .models-sidebar h2 {
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(106, 17, 203, 0.5);
+            color:black;
+            font-size: 1.5rem;
+        }
+
+        .model-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .model-item {
+            /* background: rgba(40, 40, 60, 0.7); */
+            border-radius: 10px;
+            margin-bottom: 15px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid transparent;
+        }
+
+        .model-item:hover {
+            background: rgba(50, 50, 75, 0.8);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .model-item.active {
+            border-color: #6a11cb;
+            background: rgba(60, 60, 90, 0.9);
+        }
+
+        .model-preview {
+            height: 120px;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 10px;
+            background: rgba(20, 20, 30, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .model-preview iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 5px;
+        }
+
+        .model-info h3 {
+            font-size: 1rem;
+            margin-bottom: 5px;
+            color: #fff;
+        }
+
+        .model-info p {
+            font-size: 0.85rem;
+            color: #aaa;
+            line-height: 1.4;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #777;
+        }
+
+        .empty-state p {
+            margin-bottom: 10px;
+        }
+
+        /* 右侧聊天区域样式 */
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .chat-box {
+            flex: 1;
+            /* background: rgba(25, 25, 40, 0.8); */
+            border-radius: 15px;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 12px 18px;
+            border-radius: 18px;
+            line-height: 1.5;
+            position: relative;
+            animation: fadeIn 0.3s ease;
+            font-weight: 800;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            /* background:#a6acec; */
+            background:#a393eb;
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+
+        .message.assistant {
+            font-weight: 520;
+            align-self: flex-start;
+            color:black;
+            background:#F0F3FF;
+            border-bottom-left-radius: 5px;
+        }
+
+        .message.error {
+            align-self: center;
+            background: rgba(220, 53, 69, 0.8);
+            color: white;
+            max-width: 90%;
+            text-align: center;
+        }
+
+        .model-preview-container {
+            background: rgba(25, 25, 40, 0.8);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            display: none;
+            flex-direction: column;
+        }
+
+        .model-preview-container.active {
+            display: flex;
+            animation: slideUp 0.4s ease;
+        }
+
+        .model-preview-content h4 {
+            margin-bottom: 15px;
+            color: #fff;
+            font-size: 1.2rem;
+        }
+
+        #modelViewer {
+            height: 300px;
+            border-radius: 10px;
+            overflow: hidden;
+            background: rgba(20, 20, 30, 0.5);
+        }
+
+        #modelViewer iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 8px;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+
+        .input-area input {
+            flex: 1;
+            padding: 15px 20px;
+            border: none;
+            border-radius: 50px;
+            /* background: rgba(40, 40, 60, 0.9); */
+            /* color: white; */
+            font-size: 1rem;
+            outline: none;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .input-area input:focus {
+            /* background: rgba(50, 50, 75, 0.9); */
+            box-shadow: 0 5px 20px rgba(106, 17, 150, 0.3);
+        }
+
+        .input-area input::placeholder {
+            color: #aaa;
+        }
+
+        .input-area button {
+            padding: 15px 25px;
+            border: none;
+            border-radius: 50px;
+            background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            /* box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2); */
+        }
+
+        .input-area button:hover {
+            transform: translateY(-2px);
+            /* box-shadow: 0 8px 20px rgba(106, 17, 203, 0.4); */
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+            color:#aaa;
+        }
+
+        /* 动画效果 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 900px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .models-sidebar {
+                width: 100%;
+                max-height: 300px;
+            }
+            
+            .model-list {
+                display: flex;
+                overflow-x: auto;
+                gap: 15px;
+            }
+            
+            .model-item {
+                min-width: 200px;
+                flex-shrink: 0;
+            }
+            
+            .empty-state {
+                min-width: 100%;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .message {
+                max-width: 90%;
+            }
+            
+            #modelViewer {
+                height: 250px;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="chat-container">
-        <div class="chat-header">
-            <h2>AI客服助手</h2>
-        </div>
-        <div class="chat-messages" id="chat-messages">
-            <div class="message ai-message">
-                您好！我是AI客服助手，有什么可以帮您的吗？
+    <div class="container">
+        <div class="models-sidebar">
+            <h2>打造专属3D模型<br>一键满足商品定制需求!</h2>
+            <div id="three-container" style="display: none;">
+                <iframe src="Three.html" width="100%" height="200px" style="border: none;"></iframe>
+                <a href="http://localhost:5000/Three.html" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; opacity: 0;"></a>
+            </div>
+            <div class="model-list" id="modelList">
+                <div class="empty-state">
+                    <!-- <p>暂无生成的模型</p>
+                    <p>开始对话以生成3D模型</p> -->
+                </div>
             </div>
         </div>
-        <div class="chat-input">
-            <input type="text" id="user-input" placeholder="请输入您的问题...">
-            <button id="send-button">发送</button>
+        
+        <div class="chat-area">
+            <div class="chat-box" id="chatBox">
+                <div class="message assistant">欢迎使用3D模型生成小助手！我们提供专业的3D模型定制服务，满足您在产品设计，包装，展示等方面的需求。
+通过智能生成技术，您只需简单描述，即可快速获得高度定制化的3D模型。快来描述一下您想要生成的3D物体吧~</div>
+            </div>
+            
+            <div class="model-preview-container" id="modelPreview">
+                <div class="model-preview-content">
+                    <h4>3D模型预览</h4>
+                    <div id="modelViewer">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="input-area">
+                <input type="text" id="userInput" placeholder="输入您的描述，如'一个红色的小汽车'..." onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()">发送</button>
+            </div>
+
+
         </div>
     </div>
 
     <script>
-        const chatMessages = document.getElementById('chat-messages');
-        const userInput = document.getElementById('user-input');
-        const sendButton = document.getElementById('send-button');
-        
-        // 生成会话ID（用于维护对话状态）
-        const sessionId = 'session_' + Date.now();
-        
-        // 发送消息到后端
+        const API_BASE = 'http://localhost:5000/api';
+        let currentModelId = null;
+
+        // 发送消息
         async function sendMessage() {
-            const message = userInput.value.trim();
+            const input = document.getElementById('userInput');
+            const message = input.value.trim();
+            
             if (!message) return;
             
-            // 添加用户消息到聊天界面
-            addMessage(message, 'user');
-            userInput.value = '';
+            // 添加用户消息到界面
+            addMessage('user', message);
+            input.value = '';
+            
+            // 隐藏之前的模型预览
+            hideModelPreview();
+            
+            // 显示加载状态
+            const loadingId = addMessage('assistant', '<span class="loading"></span> 正在思考中...');
             
             try {
-                // 调用后端API
-                const response = await fetch('http://localhost:8000/chat', {
+                const response = await fetch(`${API_BASE}/chat`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        message: message,
-                        session_id: sessionId
-                    })
+                    body: JSON.stringify({ user_input: message })
                 });
-                
-                if (!response.ok) {
-                    throw new Error('网络响应不正常');
-                }
                 
                 const data = await response.json();
                 
-                // 添加AI回复到聊天界面
-                addMessage(data.response, 'ai');
+                // 移除加载消息
+                const chatBox = document.getElementById('chatBox');
+                const loadingMsg = document.getElementById(loadingId);
+                if (loadingMsg) {
+                    chatBox.removeChild(loadingMsg);
+                }
+                
+                if (data.success) {
+                    addMessage('assistant', data.response);
+                    console.log(data)
+                    handleApiResponse(data) 
+                    document.getElementById('three-container').style.display = 'block';
+                    
+
+                } else {
+                    addMessage('error', `错误: ${data.error}`);
+                }
             } catch (error) {
-                console.error('Error:', error);
-                addMessage('抱歉，服务暂时不可用，请稍后再试。', 'ai');
+                // 移除加载消息
+                const chatBox = document.getElementById('chatBox');
+                const loadingMsg = document.getElementById(loadingId);
+                if (loadingMsg) {
+                    chatBox.removeChild(loadingMsg);
+                }
+                
+                addMessage('error', `网络错误: ${error.message}`);
             }
         }
         
-        // 添加消息到聊天界面
-        function addMessage(text, sender) {
-            const messageDiv = document.createElement('div');
-            messageDiv.classList.add('message');
-            messageDiv.classList.add(sender === 'user' ? 'user-message' : 'ai-message');
-            messageDiv.textContent = text;
+
+        function handleApiResponse(data) {  // 参数名改为 data 更清晰
+            console.log('API响应数据:', data); // 添加调试信息
             
-            chatMessages.appendChild(messageDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight; // 滚动到底部
+            // 检查数据结构和条件
+            if (data.model_path) {
+                const uniqueKey = `modelData_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                // 存储到localStorage
+                localStorage.setItem(uniqueKey, JSON.stringify({
+                    model_path: data.model_path,
+                    intent: data.intent,
+                    keywords: data.keywords,
+                    timestamp: new Date().toISOString(),
+                    original_response: data, // 保存完整的响应数据
+                    score:0,
+                    generate_time:data.generate_time
+                }));
+
+                // 同时保存键名列表，便于管理
+                const keyList = JSON.parse(localStorage.getItem('modelDataKeys') || '[]');
+                keyList.push(uniqueKey);
+                localStorage.setItem('modelDataKeys', JSON.stringify(keyList));
+                
+                console.log('数据已存储到localStorage');
+                
+            } else {
+                console.log('不需要生成模型或缺少模型路径');
+            }
         }
-        
-        // 事件监听
-        sendButton.addEventListener('click', sendMessage);
-        userInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
+
+
+        // 添加消息到聊天框
+        function addMessage(role, content) {
+            const chatBox = document.getElementById('chatBox');
+            const messageDiv = document.createElement('div');
+            const messageId = 'msg-' + Date.now();
+            messageDiv.id = messageId;
+            messageDiv.className = `message ${role}`;
+            messageDiv.innerHTML = content;
+            chatBox.appendChild(messageDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+            return messageId;
+        }
+
+        // 显示3D模型
+        function displayModel(modelPath, prompt) {
+
+            const modelPreview = document.getElementById('modelPreview');
+            const modelViewer = document.getElementById('modelViewer');
+            
+            // 使用iframe嵌入Three.html并传入路径参数
+            modelViewer.innerHTML = `
+                <iframe src="Three.html"></iframe>
+            `;
+            
+            // 显示模型预览区域
+            modelPreview.classList.add('active');
+            
+            // 滚动到模型预览区域
+            setTimeout(() => {
+                modelPreview.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 300);
+        }
+
+        // 隐藏模型预览
+        function hideModelPreview() {
+            const modelPreview = document.getElementById('modelPreview');
+            modelPreview.classList.remove('active');
+        }
+
+        // 添加模型到左侧列表
+        function addModelToList(modelPath, prompt) {
+            const modelList = document.getElementById('modelList');
+            const modelId = 'model-' + Date.now();
+            
+            // 如果是空状态，先清空
+            if (modelList.querySelector('.empty-state')) {
+                modelList.innerHTML = '';
+            }
+            
+            const modelItem = document.createElement('div');
+            modelItem.className = 'model-item';
+            modelItem.dataset.id = modelId;
+            modelItem.dataset.path = modelPath;
+            modelItem.dataset.prompt = prompt;
+            
+            modelItem.innerHTML = `
+                <div id="three-container" style="display: none;">
+                    <iframe src="Three.html" width="100%" height="200px"></iframe>
+                </div>
+            `;
+            
+            modelItem.addEventListener('click', function() {
+                // 高亮选中的模型
+                document.querySelectorAll('.model-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                this.classList.add('active');
+                
+                // 显示模型
+                const path = this.dataset.path;
+                const promptText = this.dataset.prompt;
+                displayModel(path, promptText);
+            });
+            
+            modelList.appendChild(modelItem);
+        }
+
+        // 处理按键事件
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
                 sendMessage();
             }
-        });
+        }
+
+        // 页面加载时获取模型历史
+        window.onload = async function() {
+            try {
+                const response = await fetch(`${API_BASE}/model-history`);
+                const data = await response.json();
+                
+                if (data.success && data.models && data.models.length > 0) {
+                    const modelList = document.getElementById('modelList');
+                    modelList.innerHTML = '';
+                    
+                    data.models.forEach((model, index) => {
+                        addModelToList(
+                            model.model_path || '默认路径', 
+                            model.prompt || `模型 ${index + 1}`
+                        );
+                    });
+                }
+            } catch (error) {
+                console.error('加载模型历史失败:', error);
+            }
+        };
     </script>
 </body>
 </html>

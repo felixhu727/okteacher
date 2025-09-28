@@ -9,6 +9,9 @@ import json
 import time
 import asyncio
 from tripo3d import TripoClient
+from dotenv import load_dotenv
+
+load_dotenv()  # 加载.env文件中的环境变量
 
 # 定义状态管理
 class GraphState(TypedDict):
@@ -20,6 +23,12 @@ class GraphState(TypedDict):
     model_path: Annotated[str, "生成的3D模型路径"]
     should_generate: Annotated[bool, "是否需要生成3D模型"]
 
+    use_history_model: Annotated[bool, "是否使用历史模型"]
+    history_keywords: Annotated[str, "匹配的历史关键词"]
+
+# 全局历史记录存储
+model_history = {}  
+
 # 初始化LLM
 def init_llm():
     """初始化DeepSeek LLM"""
@@ -28,6 +37,8 @@ def init_llm():
         base_url="https://api.deepseek.com/v1",
         api_key=os.getenv("DEEPSEEK_API_KEY")  
     )
+
+
 
 # 意图分析节点
 def intent_analysis_node(state: GraphState) -> GraphState:
@@ -64,7 +75,6 @@ def intent_analysis_node(state: GraphState) -> GraphState:
         if json_match:
             result = json.loads(json_match.group())
         else:
-            # 如果LLM没有返回标准JSON，使用默认值
             result = {
                 "intent": "clarify",
                 "keywords": "",
@@ -81,6 +91,8 @@ def intent_analysis_node(state: GraphState) -> GraphState:
     state["intent"] = result["intent"]
     state["keywords"] = result["keywords"]
     state["should_generate"] = result["intent"] == "generate_3d"
+    state["use_history_model"] = False
+    state["history_keywords"] = ""
     
     # 如果不是生成意图，添加回复消息
     if not state["should_generate"]:
@@ -89,15 +101,120 @@ def intent_analysis_node(state: GraphState) -> GraphState:
     print(f"意图分析结果: {result}")
     return state
 
+# 历史匹配节点
+def history_matching_node(state: GraphState) -> GraphState:
+    """检查当前关键词是否与历史记录匹配"""
+    print("=== 历史匹配节点 ===")
+    
+    if not state["keywords"] or not model_history:
+        print("无关键词或无历史记录，跳过匹配")
+        return state
+    
+    current_keywords = state["keywords"]
+    
+    # 简单的一一匹配检查
+    for history_keywords, model_path in model_history.items():
+        # 计算字符级别的匹配度
+        match_ratio = calculate_simple_match(current_keywords, history_keywords)
+        
+        if match_ratio >= 0.9:  # 90%匹配度
+            state["use_history_model"] = True
+            state["model_path"] = model_path
+            state["history_keywords"] = history_keywords
+            state["should_generate"] = False
+            print(f"找到历史匹配: {history_keywords} -> {model_path} (匹配度: {match_ratio:.2f})")
+            return state
+    
+    print("未找到匹配的历史记录")
+    return state
+
+# 历史模型响应节点
+def history_model_response_node(state: GraphState) -> GraphState:
+    """如果找到历史匹配，直接返回历史模型"""
+    print("=== 历史模型响应节点 ===")
+    
+    if not state["use_history_model"]:
+        return state
+    
+    llm = init_llm()
+    
+    response = llm.invoke([
+        {"role": "system", "content": f"你发现用户当前请求与历史生成记录高度相似。当前关键词：{state['keywords']}，历史关键词：{state['history_keywords']}。请告诉用户可以直接使用之前生成的模型，并询问是否需要重新生成。"},
+        {"role": "user", "content": state["user_input"]}
+    ])
+    
+    state["messages"].append(AIMessage(content=response.content))
+    print(f"返回历史模型响应: {state['model_path']}")
+    return state
+
+# 简单匹配度计算
+def calculate_simple_match(text1: str, text2: str) -> float:
+    """计算两个文本的简单匹配度"""
+    if not text1 or not text2:
+        return 0.0
+    
+    # 转换为字符集合
+    set1 = set(text1)
+    set2 = set(text2)
+    
+    # 计算Jaccard相似度
+    intersection = len(set1.intersection(set2))
+    union = len(set1.union(set2))
+    
+    return intersection / union if union > 0 else 0.0
+
+
+# 模型生成节点
+def model_generation_node(state: GraphState) -> GraphState:
+    """调用Tripo3D生成3D模型并保存到历史记录"""
+    print("=== 模型生成节点 ===")
+    
+    try:
+        # 确保输出目录存在
+        os.makedirs("./static/output", exist_ok=True)
+        
+        # 调用Tripo3D API
+        print(f"正在为关键词 '{state['keywords']}' 生成3D模型...")
+        result = tripo3d_api_call(state["keywords"], "./static/output")
+        
+        # 处理返回结果
+        if result and result[0]:  # 检查是否成功
+            success, actual_filename = result
+            # 使用API实际生成的文件名构建URL
+            model_path = f"http://localhost:5000/static/output/{actual_filename}"
+            state["model_path"] = model_path
+            
+            # 保存到历史记录
+            model_history[state["keywords"]] = model_path
+            
+            # 添加成功消息
+            state["messages"].append(AIMessage(
+                content=f"3D模型已生成！"
+            ))
+            print(f"模型生成成功并保存到历史: {model_path}")
+        else:
+            state["messages"].append(AIMessage(
+                content="模型生成失败，请稍后重试或尝试其他描述"
+            ))
+            print("模型生成失败")
+            
+    except Exception as e:
+        print(f"模型生成错误: {e}")
+        state["messages"].append(AIMessage(
+            content="生成过程中出现错误，请稍后重试"
+        ))
+    
+    return state
+
 # Tripo3D API调用函数
-def tripo3d_api_call(keywords: str, output_path: str) -> bool:
-    """真实的Tripo3D API调用"""
+def tripo3d_api_call(keywords: str, output_dir: str):
+    """真实的Tripo3D API调用，返回成功状态和实际文件名"""
     try:
         # 从环境变量获取API密钥
         api_key = os.getenv("TRIPOAI_API_KEY")
         if not api_key:
             print("错误: 未设置TRIPOAI_API_KEY环境变量")
-            return False
+            return False, None
         
         # 定义异步函数
         async def generate_model():
@@ -114,21 +231,31 @@ def tripo3d_api_call(keywords: str, output_path: str) -> bool:
                 task.status="success"
                 
                 if task.status == "success":
-                    # 下载模型文件
-                    files = await client.download_task_models(task, os.path.dirname(output_path))
-                    print(f"模型已保存到: {output_path}")
-                    return True
+                    # 下载模型文件到指定目录
+                    files = await client.download_task_models(task, output_dir)
+                    print(f"下载的文件列表: {files}")
                     
+                    if files and isinstance(files, dict) and 'pbr_model' in files:
+                        # 获取实际生成的文件名
+                        file_path = files['pbr_model']
+                        actual_filename = os.path.basename(file_path)
+                        print(f"实际生成的文件名: {actual_filename}")
+                        print(f"模型已保存到: {os.path.join(output_dir, actual_filename)}")
+                        return True, actual_filename
+                    else:
+                        print("未找到下载的文件或文件格式不正确")
+                        return False, None
                 else:
                     print(f"任务失败，状态: {task.status}")
-                    return False
-        
+                    return False, None
 
+        # 运行异步函数并返回结果
         return asyncio.run(generate_model())
         
     except Exception as e:
         print(f"Tripo3D API调用错误: {e}")
-        return False
+        return False, None
+
 
 
 # Tripo3D模型生成节点
@@ -138,15 +265,17 @@ def tripo3d_generation_node(state: GraphState) -> GraphState:
     
     try:
         # 确保输出目录存在
-        os.makedirs("./output", exist_ok=True)
+        os.makedirs("./static/output", exist_ok=True)
         
         # 生成唯一文件名
         filename = f"model_{uuid.uuid4().hex[:8]}.glb"
-        model_path = f"./output/{filename}"
+        file_save_path = f"./static/output/{filename}"
+
+        model_path = f"http://localhost:5000/static/output/{filename}"
         
         # 调用Tripo3D API
         print(f"正在为关键词 '{state['keywords']}' 生成3D模型...")
-        success = tripo3d_api_call(state["keywords"], model_path)
+        success = tripo3d_api_call(state["keywords"], file_save_path)
         
         if success:
             state["model_path"] = model_path
@@ -176,39 +305,38 @@ def should_generate_model(state: GraphState) -> str:
     else:
         return "end"
 
-# 构建工作流图
+
+# 工作流示例
 def create_workflow():
-    """创建LangGraph工作流"""
-    
-    # 创建状态图
+    """创建简化的工作流"""
     workflow = StateGraph(GraphState)
     
     # 添加节点
     workflow.add_node("intent_analysis", intent_analysis_node)
-    workflow.add_node("generate_3d", tripo3d_generation_node)
+    workflow.add_node("history_matching", history_matching_node)
+    workflow.add_node("history_response", history_model_response_node)
+    workflow.add_node("model_generation", model_generation_node)
     
     # 设置入口点
     workflow.set_entry_point("intent_analysis")
     
-    # 添加条件边
+    # 添加边
     workflow.add_conditional_edges(
         "intent_analysis",
-        should_generate_model,
-        {
-            "generate_3d": "generate_3d",
-            "end": END
-        }
+        lambda state: "history_matching" if state["should_generate"] else END
     )
     
-    # 添加从生成节点到结束的边
-    workflow.add_edge("generate_3d", END)
+    workflow.add_conditional_edges(
+        "history_matching", 
+        lambda state: "history_response" if state["use_history_model"] else "model_generation"
+    )
+    
+    workflow.add_edge("history_response", END)
+    workflow.add_edge("model_generation", END)
     
     return workflow.compile()
-
 # 主执行类
 class Tripo3DGenerator:
-
-    
     def __init__(self):
         self.workflow = create_workflow()
         self.conversation_history = []
@@ -288,9 +416,3 @@ def main():
         print(f"AI回复: {result['response']}")
         
 
-if __name__ == "__main__":
-    # 设置环境变量（实际使用时需要设置真实的API密钥）
-    os.environ["DEEPSEEK_API_KEY"] = "sk-b30088f06f664f6c91b9e53faf8aea5e"
-    os.environ["TRIPOAI_API_KEY"] = "tsk_czg8roWVkpYK1j3ZMxP_v02SbMnpfxmoc9qKKl52aca"
-    
-    main()
